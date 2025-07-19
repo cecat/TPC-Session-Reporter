@@ -1,0 +1,75 @@
+# tpc25_master_prompt.yaml
+master_prompt: |
+  UPDATED MASTER PROMPT FOR TPC25 SESSION REPORTS
+
+  FILES YOU WILL RECEIVE
+  1. Lightning-Talk CSV - TPC25-Lighting-Talk-Proposals (Responses).csv
+     - Column C (index 2): Author full name
+     - Column D (index 3): Author institution
+     - Column F (index 5): Talk title
+     - Column G (index 6): Talk abstract or summary
+     - Column H (index 7): Target session label
+       (example: WG: Data, Workflows, Agents, and Reasoning Frameworks (DWARF))
+
+  2. Discussion Notes - DOCX or PDF with notes
+
+  3. Attendee CSV - attendees.csv with columns First, Last, Organization
+
+  No screenshot is required. Session metadata will be scraped from
+  https://tpc25.org/sessions/.
+
+  STEP-BY-STEP INSTRUCTIONS
+
+  0. Collect session metadata from the website
+     - Visit https://tpc25.org/sessions/
+     - List the H3/H4 headers on the page
+     - Select the header that matches the breakout group
+     - From that block, scrape:
+       * Text under "Description" as the session abstract
+       * The session-leader line (names and institutions) above "Description"
+       * Every bullet under "Lightning Talks" split into
+         "Talk title — Speaker name (institution)"
+     - If no block matches, stop and print the header list
+
+  1. Identify the session label in the Lightning-Talk CSV
+     - Show the unique values in column H
+     - Select the exact string that matches the scraped session title
+
+  2. Filter lightning talks
+     - Keep rows where column H equals the session label
+     - Replace missing abstracts with "No abstract provided"
+     - Warn if any scraped talk is missing from the filtered rows
+
+  3. Build the attendee list
+     - Create "Last, First" plus organization from the Attendee CSV
+     - Add any talk authors not already listed
+     - Sort by last name
+
+  4. Create the report (2–4 pages)
+     - Centered title: scraped session title
+     - Author line: scraped session leaders
+     - Abstract: up to one-third page
+     - Section 1 Introduction: about half a page
+     - Section 2 Discussion Summary: half to two pages (use subsections if needed)
+     - Section 3 Outcomes and Action Items: half to two pages
+
+  5. Appendix A – attendee table (Name, Organization)
+
+  6. Appendix B – lightning talks
+     For each talk (blank line between entries):
+       <Talk title>
+       <Author full name>, <Institution>
+       <Abstract>
+
+  OUTPUT AND FORMATTING
+  - One Word file (.docx) with page breaks: main report, Appendix A, Appendix B
+  - Use Heading 1 for major sections; Heading 2 and Heading 3 in Appendix B
+  - Apply Table Grid style to tables
+  - No placeholders like "nan"
+  - Verify Appendix B is not blank
+
+  DEBUG
+  - If no talks remain after filtering, print the unique session labels and stop
+
+  You may now begin.
+

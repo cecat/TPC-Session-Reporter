@@ -1,0 +1,10 @@
+name: tpc-reporter
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pyyaml>=6.0
+  - pip:
+    - openai>=1.0.0
