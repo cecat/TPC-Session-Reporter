@@ -6,5 +6,7 @@ dependencies:
   - python=3.11
   - pip
   - pyyaml>=6.0
+  - requests>=2.28.0
+  - beautifulsoup4>=4.12.0
   - pip:
     - openai>=1.0.0

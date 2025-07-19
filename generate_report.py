@@ -13,6 +13,10 @@ from pathlib import Path
 from openai import OpenAI
 from datetime import datetime
 import sys
+import csv
+from io import StringIO
+import re
+from bs4 import BeautifulSoup
 
 def load_secrets(file_path="secrets.yml"):
     """Load API credentials from secrets.yml"""
@@ -269,6 +273,182 @@ def session_matches(target_group, session_label):
     
     return False
 
+def extract_session_details(session_acronym, html_content=None):
+    """Extract session title, leaders, description from program HTML"""
+    input_dir = Path("_INPUT")
+    html_file = input_dir / "program_sessions.html"
+    
+    session_info = {
+        'title': f"Session: {session_acronym}",
+        'leaders': '',
+        'description': ''
+    }
+    
+    if not html_file.exists():
+        print(f"⚠️  program_sessions.html not available, using basic session info")
+        return session_info
+    
+    try:
+        with open(html_file, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Look for session headers (H3, H4) that might contain our session
+        headers = soup.find_all(['h3', 'h4'])
+        
+        for header in headers:
+            header_text = header.get_text(strip=True)
+            if session_acronym.upper() in header_text.upper():
+                session_info['title'] = header_text
+                
+                # Look for description in following paragraphs
+                next_elem = header.find_next_sibling()
+                description_parts = []
+                
+                while next_elem and next_elem.name not in ['h1', 'h2', 'h3', 'h4']:
+                    if next_elem.name == 'p' and next_elem.get_text(strip=True):
+                        text = next_elem.get_text(strip=True)
+                        if 'leader' in text.lower() or 'organizer' in text.lower():
+                            session_info['leaders'] = text
+                        else:
+                            description_parts.append(text)
+                    next_elem = next_elem.find_next_sibling()
+                
+                if description_parts:
+                    session_info['description'] = ' '.join(description_parts[:2])  # First 2 paragraphs
+                break
+        
+        print(f"✅ Extracted session info: {session_info['title']}")
+        return session_info
+        
+    except Exception as e:
+        print(f"⚠️  Error parsing HTML: {e}")
+        return session_info
+
+def filter_talks_by_exact_acronym(breakout_group):
+    """Filter lightning talks by exact acronym match"""
+    input_dir = Path("_INPUT")
+    lightning_file = input_dir / "lightning_talks.csv"
+    
+    if not lightning_file.exists():
+        return []
+    
+    try:
+        with open(lightning_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        reader = csv.DictReader(StringIO(content))
+        filtered_talks = []
+        
+        session_col = 'Which session is best fit for your proposed lightning talk?  Some sessions have already filled up but please submit and if full you will be put on a standby list.'
+        
+        for row in reader:
+            session_label = row.get(session_col, '')
+            
+            # Simple exact acronym match - look for acronym in parentheses
+            if f"({breakout_group})" in session_label or f"({breakout_group.upper()})" in session_label:
+                filtered_talks.append({
+                    'title': row.get('Title of your proposed lightning talk', 'No title'),
+                    'author': row.get('Your full name', 'No author'),
+                    'institution': row.get('Your institution', 'No institution'),
+                    'abstract': row.get('Abstract of your proposed lightning talk (80-100 words)', 'No abstract'),
+                    'session_label': session_label
+                })
+        
+        print(f"✅ Found {len(filtered_talks)} lightning talks for {breakout_group}")
+        return filtered_talks
+        
+    except Exception as e:
+        print(f"⚠️  Error filtering lightning talks: {e}")
+        return []
+
+def generate_attendees_appendix():
+    """Generate formatted attendees table"""
+    input_dir = Path("_INPUT")
+    attendees_file = input_dir / "attendees.csv"
+    
+    if not attendees_file.exists():
+        return "## Appendix A: Attendees\n\nAttendees list not available.\n\n"
+    
+    try:
+        with open(attendees_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        reader = csv.DictReader(StringIO(content))
+        attendees = []
+        
+        for row in reader:
+            first = row.get('First', '').strip()
+            last = row.get('Last', '').strip()
+            org = row.get('Organization', '').strip()
+            
+            if first and last:
+                name = f"{first} {last}"
+                attendees.append({'name': name, 'organization': org})
+        
+        if not attendees:
+            return "## Appendix A: Attendees\n\nAttendees list not available.\n\n"
+        
+        # Sort by last name
+        attendees.sort(key=lambda x: x['name'].split()[-1] if x['name'] else '')
+        
+        appendix = "## Appendix A: Attendees\n\n"
+        appendix += "| Name | Organization |\n"
+        appendix += "|------|--------------|\n"
+        
+        for attendee in attendees:
+            name = attendee['name'] or 'N/A'
+            org = attendee['organization'] or 'N/A'
+            appendix += f"| {name} | {org} |\n"
+        
+        appendix += "\n"
+        
+        print(f"✅ Generated attendees appendix with {len(attendees)} attendees")
+        return appendix
+        
+    except Exception as e:
+        print(f"⚠️  Error generating attendees appendix: {e}")
+        return "## Appendix A: Attendees\n\nError loading attendees list.\n\n"
+
+def generate_lightning_talks_appendix(filtered_talks):
+    """Generate formatted lightning talks appendix with full abstracts"""
+    if not filtered_talks:
+        return "## Appendix B: Lightning Talks\n\nNo lightning talks found for this session.\n\n"
+    
+    appendix = "## Appendix B: Lightning Talks\n\n"
+    
+    for i, talk in enumerate(filtered_talks, 1):
+        appendix += f"### {i}. {talk['title']}\n\n"
+        appendix += f"**Author:** {talk['author']}\n\n"
+        appendix += f"**Institution:** {talk['institution']}\n\n"
+        appendix += f"**Abstract:** {talk['abstract']}\n\n"
+        appendix += "---\n\n"
+    
+    print(f"✅ Generated lightning talks appendix with {len(filtered_talks)} talks")
+    return appendix
+
+def generate_report_framework(session_info, filtered_talks):
+    """Generate the static parts of the report (title, appendices)"""
+    
+    # Title section
+    report = f"# {session_info['title']}\n\n"
+    
+    if session_info['leaders']:
+        report += f"**Session Leaders:** {session_info['leaders']}\n\n"
+    
+    # Placeholder for AI-generated content
+    report += "<!-- AI_CONTENT_PLACEHOLDER -->\n\n"
+    
+    # Generate appendices
+    attendees_appendix = generate_attendees_appendix()
+    talks_appendix = generate_lightning_talks_appendix(filtered_talks)
+    
+    report += attendees_appendix
+    report += talks_appendix
+    
+    return report
+
 def read_input_files(breakout_group):
     """Read CSV files and return their content as text"""
     input_dir = Path("_INPUT")
@@ -452,53 +632,29 @@ def main():
     setup_input_directory()
     download_all_sources(config, args)
     
-    # Read the actual CSV files and include in prompt
-    print("\n📖 Reading input files...")
-    files_content = read_input_files(breakout_group)
+    # NEW ARCHITECTURE: Generate report framework using Python
+    print("\n📊 Processing data and generating report framework...")
     
-    # Build prompt with actual data
-    full_prompt = f"{master_prompt}\n\nTARGET BREAKOUT GROUP: {breakout_group}\n\n"
+    # 1. Extract session details from HTML
+    session_info = extract_session_details(breakout_group)
     
-    if 'lightning_talks' in files_content:
-        full_prompt += f"LIGHTNING TALKS CSV DATA:\n{files_content['lightning_talks']}\n\n"
-        print("✅ Lightning talks data included")
+    # 2. Filter lightning talks by exact acronym match
+    filtered_talks = filter_talks_by_exact_acronym(breakout_group)
     
-    if 'attendees' in files_content:
-        full_prompt += f"ATTENDEES CSV DATA:\n{files_content['attendees']}\n\n"
-        print("✅ Attendees data included")
+    # 3. Generate the report framework (title + appendices)
+    report_framework = generate_report_framework(session_info, filtered_talks)
     
-    if 'notes' in files_content:
-        full_prompt += f"DISCUSSION NOTES:\n{files_content['notes']}\n\n"
-        print("✅ Discussion notes included")
+    print(f"\n📄 Report framework generated:")
+    print(f"   - Session: {session_info['title']}")
+    print(f"   - Lightning talks: {len(filtered_talks)}")
+    print(f"   - Report length: {len(report_framework)} characters")
     
-    # Make API call
-    print("\n🔄 Generating report...")
-    response_content = call_openai_api(client, full_prompt, config)
+    # For now, save the framework without AI content
+    print("\n💾 Saving report framework...")
+    save_output(report_framework)
     
-    # Check for errors in the response
-    print("\n🔍 Checking response for errors...")
-    has_error, error_code = check_for_errors(response_content)
-    
-    if has_error:
-        print(f"❌ Model returned error: {error_code}")
-        print("\n📄 Full response:")
-        print(response_content)
-        
-        # Save error response for debugging
-        error_filename = f"error_response_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        save_output(response_content, error_filename)
-        print(f"\n⚠️  Error response saved to: {error_filename}")
-        
-        # Exit with error code
-        sys.exit(1)
-    else:
-        print("✅ No errors detected in response")
-        
-        # Save output
-        print("\n💾 Saving report...")
-        save_output(response_content)
-        
-        print("\n🎉 Report generation completed!")
+    print("\n🎉 Report framework generation completed!")
+    print("\n📝 Next step: Add AI-generated content for report body (discussion summary, etc.)")
 
 if __name__ == "__main__":
     main()
