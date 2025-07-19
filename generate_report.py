@@ -273,8 +273,89 @@ def session_matches(target_group, session_label):
     
     return False
 
+def create_sample_session_yaml():
+    """Create a sample session.yaml file for user to fill out"""
+    sample_content = '''# Session Information Configuration
+# Use this file when the program cannot automatically extract session details from the website
+# 
+# Instructions:
+# 1. Replace the sample data below with your actual session information
+# 2. Save this file as 'session.yaml' in the same directory as the report generator
+# 3. Run the report generator again
+
+session:
+  title: "Your Session Title Here (e.g., Model Architecture and Performance Evaluation)"
+  
+  leaders:
+    - name: "First Leader Name"
+      institution: "Leader's Institution"
+    - name: "Second Leader Name" 
+      institution: "Leader's Institution"
+  
+  description: |
+    Enter your session description here. You can use multiple lines.
+    Describe the session's goals, topics covered, and key themes.
+    This will appear in the generated report.
+
+# Optional: Additional session metadata
+metadata:
+  date: "Session Date (e.g., Thursday, July 31, 2025)"
+  time: "Session Time (e.g., 8:30 AM - 5:00 PM)"
+  track: "Track Name (e.g., Scale, Applications, etc.)"
+  session_type: "Session Type (e.g., Breakout, Plenary, etc.)"
+'''
+    
+    try:
+        with open('session.yaml', 'w', encoding='utf-8') as f:
+            f.write(sample_content)
+        print(f"📝 Created sample session.yaml file")
+        return True
+    except Exception as e:
+        print(f"❌ Error creating session.yaml: {e}")
+        return False
+
+def load_session_yaml():
+    """Load session information from session.yaml file"""
+    session_file = Path("session.yaml")
+    if not session_file.exists():
+        return None
+        
+    try:
+        with open(session_file, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+        
+        session_data = data.get('session', {})
+        
+        # Format leaders
+        leaders_list = session_data.get('leaders', [])
+        if leaders_list:
+            formatted_leaders = []
+            for leader in leaders_list:
+                name = leader.get('name', '')
+                institution = leader.get('institution', '')
+                if name and institution:
+                    formatted_leaders.append(f"{name}, {institution}")
+                elif name:
+                    formatted_leaders.append(name)
+            leaders_str = '; '.join(formatted_leaders)
+        else:
+            leaders_str = ''
+        
+        session_info = {
+            'title': session_data.get('title', ''),
+            'leaders': leaders_str,
+            'description': session_data.get('description', '')
+        }
+        
+        print(f"✅ Loaded session information from session.yaml")
+        return session_info
+        
+    except Exception as e:
+        print(f"⚠️  Error loading session.yaml: {e}")
+        return None
+
 def extract_session_details(session_acronym, html_content=None):
-    """Extract session title, leaders, description from program HTML"""
+    """Extract session title, leaders, description from program HTML or session.yaml"""
     input_dir = Path("_INPUT")
     html_file = input_dir / "program_sessions.html"
     
@@ -284,8 +365,24 @@ def extract_session_details(session_acronym, html_content=None):
         'description': ''
     }
     
-    if not html_file.exists():
-        print(f"⚠️  program_sessions.html not available, using basic session info")
+    # First try session.yaml if it exists
+    yaml_info = load_session_yaml()
+    if yaml_info:
+        return yaml_info
+    
+    # Then try the local HTML version if available
+    local_html_file = Path("tpc25_sessions.html")
+    if local_html_file.exists():
+        html_file = local_html_file
+        print(f"✅ Using local session data: {local_html_file}")
+    elif not html_file.exists():
+        print(f"⚠️  program_sessions.html not available")
+        print(f"📝 Please create a session.yaml file with session details")
+        create_sample_session_yaml()
+        print(f"\n📋 Instructions:")
+        print(f"   1. Edit the newly created session.yaml file")
+        print(f"   2. Replace sample data with your actual session information")
+        print(f"   3. Run the report generator again")
         return session_info
     
     try:
@@ -294,7 +391,8 @@ def extract_session_details(session_acronym, html_content=None):
         
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        # Look for session headers (H3, H4) that might contain our session
+        
+        # General session parsing for other sessions
         headers = soup.find_all(['h3', 'h4'])
         
         for header in headers:
@@ -324,6 +422,13 @@ def extract_session_details(session_acronym, html_content=None):
         
     except Exception as e:
         print(f"⚠️  Error parsing HTML: {e}")
+        print(f"📝 To provide session details manually, create a session.yaml file")
+        create_sample_session_yaml()
+        print(f"\n📋 Instructions:")
+        print(f"   1. Edit the newly created session.yaml file")
+        print(f"   2. Replace sample data with your actual session information")
+        print(f"   3. Run the report generator again")
+        
         return session_info
 
 def filter_talks_by_exact_acronym(breakout_group):
@@ -434,8 +539,11 @@ def generate_report_framework(session_info, filtered_talks):
     # Title section
     report = f"# {session_info['title']}\n\n"
     
-    if session_info['leaders']:
+    if session_info.get('leaders'):
         report += f"**Session Leaders:** {session_info['leaders']}\n\n"
+    
+    if session_info.get('description'):
+        report += f"**Description:** {session_info['description']}\n\n"
     
     # Placeholder for AI-generated content
     report += "<!-- AI_CONTENT_PLACEHOLDER -->\n\n"
